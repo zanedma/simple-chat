@@ -9,21 +9,24 @@ import {
   Input,
   Button,
   Center,
+  Text,
 } from "@chakra-ui/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useChats } from "../../hooks/useChats";
 
-interface ISignInModalProps {
-  setIsConnected: React.Dispatch<React.SetStateAction<boolean>>;
-}
-
-export default function SignInModal({ setIsConnected }: ISignInModalProps) {
+export default function SignInModal() {
   const { onClose } = useDisclosure();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const { connect, error, isConnected } = useChats();
 
-  const handleSubmit = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
+  useEffect(() => console.log(isConnected), [isConnected]);
+
+  const handleSubmit = async (
+    e: React.MouseEvent<HTMLButtonElement, MouseEvent>
+  ) => {
     e.preventDefault();
-    setIsConnected(true);
+    await connect(password);
   };
 
   return (
@@ -40,11 +43,18 @@ export default function SignInModal({ setIsConnected }: ISignInModalProps) {
             />
             <FormLabel marginY={2}>Password</FormLabel>
             <Input
+              type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
+            <Center>{error && <Text color="red">{error}</Text>}</Center>
             <Center>
-              <Button type="submit" onClick={handleSubmit} marginY={2} colorScheme="blue">
+              <Button
+                type="submit"
+                onClick={handleSubmit}
+                marginY={2}
+                colorScheme="blue"
+              >
                 Enter
               </Button>
             </Center>

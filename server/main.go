@@ -1,6 +1,7 @@
 package main
 
 import (
+	"beehive-chat/auth"
 	chatmanager "beehive-chat/chatmanager"
 	"log"
 	"net/http"
@@ -10,9 +11,8 @@ import (
 
 const (
 	connectionPassword = "password123"
+	allowedOrigin      = "http://localhost:3000"
 )
-
-var upgrader = websocket.Upgrader{}
 
 func checkPassword(next http.Handler) http.Handler {
 	// TODO: not plain text password
@@ -28,19 +28,17 @@ func checkPassword(next http.Handler) http.Handler {
 }
 
 func main() {
-	manager := chatmanager.NewManager()
+	authService := auth.NewService()
+	upgrader := &websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+			return origin == allowedOrigin
+		},
+	}
+	manager := chatmanager.NewManager(authService, upgrader)
 	go manager.Run()
-	mux := http.NewServeMux()
-	connectHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// TODO: make sure password is authenticate client
-		conn, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			log.Println("Error upgrading connection: ", err)
-			return
-		}
-		manager.AddClient(conn)
-	})
-	mux.Handle("/", checkPassword(connectHandler))
+	http.Handle("/auth", authService.HandleAuth())
+	http.Handle("/chat", manager.HandleConnection())
 
-	http.ListenAndServe("localhost:8081", mux)
+	http.ListenAndServe("localhost:8081", nil)
 }

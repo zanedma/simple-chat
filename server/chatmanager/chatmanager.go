@@ -1,7 +1,9 @@
 package chatmanager
 
 import (
+	"beehive-chat/auth"
 	"log"
+	"net/http"
 
 	"github.com/gorilla/websocket"
 )
@@ -16,20 +18,42 @@ type Manager struct {
 	add       chan *websocket.Conn
 	remove    chan *websocket.Conn
 	broadcast chan *Message
-	messages  []*Message
+
+	messages    []*Message
+	authService *auth.AuthService
+	upgrader    *websocket.Upgrader
 }
 
-func NewManager() *Manager {
+func NewManager(authService *auth.AuthService, upgrader *websocket.Upgrader) *Manager {
 	return &Manager{
-		clients:   make(map[*websocket.Conn]bool),
-		add:       make(chan *websocket.Conn),
-		remove:    make(chan *websocket.Conn),
-		broadcast: make(chan *Message),
-		messages:  []*Message{},
+		clients:     make(map[*websocket.Conn]bool),
+		add:         make(chan *websocket.Conn),
+		remove:      make(chan *websocket.Conn),
+		broadcast:   make(chan *Message),
+		messages:    []*Message{},
+		authService: authService,
+		upgrader:    upgrader,
 	}
 }
 
-func (instance *Manager) AddClient(conn *websocket.Conn) {
+func (instance *Manager) HandleConnection() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token := r.URL.Query().Get("token")
+		log.Println("Checking if token", token, "is valid")
+		if !instance.authService.TokenIsValid(token) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		conn, err := instance.upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			log.Println("Error upgrading connection:", err)
+			return
+		}
+		instance.addClient(conn)
+	}
+}
+
+func (instance *Manager) addClient(conn *websocket.Conn) {
 	instance.add <- conn
 	go instance.listenForMessages(conn)
 	// TODO: send list of messages
