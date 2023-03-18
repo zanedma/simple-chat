@@ -17,7 +17,6 @@ var upgrader = websocket.Upgrader{}
 func checkPassword(next http.Handler) http.Handler {
 	// TODO: not plain text password
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Println(r.Header)
 		password := r.Header["X-Connection-Password"]
 		log.Println(password)
 		if len(password) != 1 || password[0] != connectionPassword {

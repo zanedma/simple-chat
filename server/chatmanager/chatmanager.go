@@ -16,6 +16,7 @@ type Manager struct {
 	add       chan *websocket.Conn
 	remove    chan *websocket.Conn
 	broadcast chan *Message
+	messages  []*Message
 }
 
 func NewManager() *Manager {
@@ -24,6 +25,7 @@ func NewManager() *Manager {
 		add:       make(chan *websocket.Conn),
 		remove:    make(chan *websocket.Conn),
 		broadcast: make(chan *Message),
+		messages:  []*Message{},
 	}
 }
 
@@ -69,6 +71,7 @@ func (instance *Manager) Run() {
 			}
 		case message := <-instance.broadcast:
 			log.Println("Broadcasting: ", message)
+			instance.messages = append(instance.messages, message)
 			for client := range instance.clients {
 				err := client.WriteJSON(message)
 				if err != nil {
