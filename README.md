@@ -21,4 +21,4 @@ npm run start
 
 4. Enter any username, chats that originated from that username are shown in blue once authenticated to the chat room.
 
-5. The correct password to authenticate to the server is currently just "password. Once connected, you should see the chat interface.
+5. The correct password to authenticate to the server is currently just "`password`". Once connected, you should see the chat interface.
