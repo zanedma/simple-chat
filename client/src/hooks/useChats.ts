@@ -37,6 +37,10 @@ type IncomingPackage = BroadcastChatMessage | ChatListMessage;
 
 const BASE_URL = "http://localhost:8081";
 
+/**
+ * @description manages the current chat state and authenticating and communicating with the server
+ * @returns various state variables and functions to use 
+ */
 export function useChats() {
   const [chats, setChats] = useState<Record<string, ChatMessage>>({});
   const [username, setUsername] = useState("");
@@ -44,6 +48,18 @@ export function useChats() {
   const [error, setError] = useState("");
   const socketRef = useRef<WebSocket | null>(null);
 
+  useEffect(() => {
+    // make sure that if the socket does not exist isConnected is false
+    if (!socketRef.current) {
+      setIsConnected(false)
+    }
+  }, [socketRef])
+
+  /**
+   * @description exchange a password for an authentication token on the backend
+   * @param password password to authenticate with
+   * @returns the token if successful, throws and error if not
+   */
   const getToken = async (password: string): Promise<string> => {
     try {
       const res = await axios.get<TokenResponse>(`${BASE_URL}/auth`, {
@@ -66,19 +82,25 @@ export function useChats() {
     }
   };
 
+  /**
+   * @description initialize a socket connection with the server
+   * @param token authentication token received from the server to authorize the connection
+   */
   const initSocket = useCallback((token: string) => {
     const url = new URL(BASE_URL);
     url.protocol = "ws";
     url.pathname = "/chat";
     url.searchParams.append("token", token);
     const socket = new WebSocket(url.toString());
-    socket.onopen = (event) => {
+    socket.onopen = () => {
       console.log("socket opened");
       setIsConnected(true);
     };
-    socket.onerror = (event) => {
+    socket.onerror = () => {
+      // unfortunately, the event received does not contain the error that occurred
+      // it is assumed that onclose will fire, and that event will contain a code
+      // indicating what the error could have been
       console.log("socket error");
-      console.log(event);
     };
     socket.onmessage = (event) => {
       console.log("socket message");
@@ -103,6 +125,12 @@ export function useChats() {
     socketRef.current = socket;
   }, []);
 
+  /**
+   * @description connect to the server by first attempting to get an access token
+   * and if successful, using the token establish a socket connection
+   * @param newUsername username entered by the user
+   * @param password password entered by the user
+   */
   const connect = async (newUsername: string, password: string) => {
     setError("");
     setUsername(newUsername);
@@ -114,12 +142,19 @@ export function useChats() {
     }
   };
 
-  const sendChat = async (chatMessage: string) => {
+  /**
+   * @description send a chat to the server to be saved and broadcasted to other clients
+   * @param chatMessage chat message to send
+   * @returns the id of the created chat if successful, null if an error occurred
+   */
+  const sendChat = async (chatMessage: string): Promise<string | null> => {
     if (!socketRef.current) {
+      // this should never happen
       setIsConnected(false);
-      setError("Attempt to send chat when socket is null");
-      return;
+      setError("Attempt to send chat when socket is null (disconnected)");
+      return null;
     }
+    // chat id is random uuid for simplicity - could also hash the username, chat message, and timestamp
     const chatId = uuidV4();
     const chatObj: ChatMessage = {
       data: chatMessage,
@@ -132,9 +167,13 @@ export function useChats() {
       messageType: "chat:send",
     };
     socketRef.current.send(JSON.stringify(socketPackage));
+    return chatId
   };
 
-  const disconnect = async () => {
+  /**
+   * @description disconnect the socket
+   */
+  const disconnect = (): void => {
     socketRef.current?.close();
   };
 

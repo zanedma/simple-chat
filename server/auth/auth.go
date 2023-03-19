@@ -12,7 +12,11 @@ const (
 	connectionPassword = "password123"
 )
 
-type AuthService struct {
+type AuthServicer interface {
+	HandleAuth() http.HandlerFunc
+	TokenIsValid(string) bool
+}
+type authService struct {
 	sync.RWMutex
 	tokenCache map[string]bool
 }
@@ -32,13 +36,13 @@ func randToken() string {
 	return fmt.Sprintf("%x", bytes)
 }
 
-func NewService() *AuthService {
-	return &AuthService{
+func NewService() AuthServicer {
+	return &authService{
 		tokenCache: make(map[string]bool),
 	}
 }
 
-func (instance *AuthService) HandleAuth() http.HandlerFunc {
+func (instance *authService) HandleAuth() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		setupCorsResponse(w, r)
 		if r.Method == http.MethodOptions {
@@ -66,7 +70,7 @@ func (instance *AuthService) HandleAuth() http.HandlerFunc {
 	}
 }
 
-func (instance *AuthService) TokenIsValid(token string) bool {
+func (instance *authService) TokenIsValid(token string) bool {
 	instance.RLock()
 	defer instance.RUnlock()
 	return instance.tokenCache[token]

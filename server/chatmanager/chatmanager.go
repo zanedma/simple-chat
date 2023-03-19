@@ -4,6 +4,7 @@ import (
 	"beehive-chat/auth"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -12,6 +13,7 @@ const (
 	incomingChatMessageType     = "chat:send"
 	outgoingChatMessageType     = "chat:broadcast"
 	outgoingChatListMessageType = "chat:list"
+	broadcastMaxRetries         = 3
 )
 
 type Chat struct {
@@ -32,17 +34,23 @@ type ChatListEvent struct {
 }
 
 type Manager struct {
-	clients   map[*websocket.Conn]bool
-	add       chan *websocket.Conn
-	remove    chan *websocket.Conn
+	// map of currently connected clients
+	clients map[*websocket.Conn]bool
+	// channel to add a client to clients
+	add chan *websocket.Conn
+	// channel to remove a client from clients
+	remove chan *websocket.Conn
+	// channel to broadcast a message to all clients
 	broadcast chan Chat
-
-	messages    map[string]Chat
-	authService *auth.AuthService
-	upgrader    *websocket.Upgrader
+	// map of all messages
+	messages map[string]Chat
+	// service to handle authorizing connections
+	authService auth.AuthServicer
+	// upgrader to handle upgrading socket connections
+	upgrader *websocket.Upgrader
 }
 
-func NewManager(authService *auth.AuthService, upgrader *websocket.Upgrader) *Manager {
+func NewManager(authService auth.AuthServicer, upgrader *websocket.Upgrader) *Manager {
 	return &Manager{
 		clients:     make(map[*websocket.Conn]bool),
 		add:         make(chan *websocket.Conn),
@@ -97,39 +105,57 @@ func (instance *Manager) listenForMessages(conn *websocket.Conn) {
 	}
 }
 
+func (instance *Manager) sendChatList(conn *websocket.Conn) error {
+	chatListEvent := ChatListEvent{
+		MessageType: outgoingChatListMessageType,
+		Data:        instance.messages,
+	}
+	err := conn.WriteJSON(chatListEvent)
+	if err != nil {
+		// TODO: send error message to client
+		log.Println("Error writing chat list to client: ", err.Error())
+	}
+	return err
+}
+
+func (instance *Manager) broadcastToClient(conn *websocket.Conn, chat ChatEvent) error {
+	var err error
+	for attempt := 0; attempt < broadcastMaxRetries; attempt++ {
+		if attempt == 0 {
+			err = conn.WriteJSON(chat)
+		} else {
+			err = instance.sendChatList(conn)
+		}
+		if err == nil {
+			return nil
+		}
+		log.Printf("Attempt %d of %d - error writing message to client %s: %s", attempt+1, broadcastMaxRetries, conn.RemoteAddr().String(), err)
+		time.Sleep(time.Second * (time.Duration(attempt) + 1))
+	}
+	return err
+}
+
 func (instance *Manager) Run() {
 	for {
 		select {
-		case client := <-instance.add:
-			log.Println("Adding client:", client.RemoteAddr().String())
-			instance.clients[client] = true
-			chatListEvent := ChatListEvent{
-				MessageType: outgoingChatListMessageType,
-				Data:        instance.messages,
-			}
-			err := client.WriteJSON(chatListEvent)
-			if err != nil {
-				// TODO: send error message to client
-				log.Println("Error writing chat list to client: ", err.Error())
-				return
-			}
-		case client := <-instance.remove:
-			log.Println("Removing client:", client.RemoteAddr().String())
-			if _, ok := instance.clients[client]; ok {
-				delete(instance.clients, client)
-				client.Close()
+		case conn := <-instance.add:
+			log.Println("Adding client:", conn.RemoteAddr().String())
+			instance.clients[conn] = true
+			instance.sendChatList(conn)
+		case conn := <-instance.remove:
+			log.Println("Removing client:", conn.RemoteAddr().String())
+			if _, ok := instance.clients[conn]; ok {
+				delete(instance.clients, conn)
+				conn.Close()
 			} else {
-				log.Println("Error removing client", client.RemoteAddr().String(), ": client not found")
+				log.Println("Error removing client", conn.RemoteAddr().String(), ": client not found")
 			}
 		case message := <-instance.broadcast:
 			log.Println("Broadcasting: ", message)
 			instance.messages[message.ChatId] = message
 			chatEvent := ChatEvent{MessageType: outgoingChatMessageType, Data: message}
-			for client := range instance.clients {
-				err := client.WriteJSON(chatEvent)
-				if err != nil {
-					log.Println("Error writing message to client", client.RemoteAddr().String(), ": ", err)
-				}
+			for conn := range instance.clients {
+				go instance.broadcastToClient(conn, chatEvent)
 			}
 		}
 	}

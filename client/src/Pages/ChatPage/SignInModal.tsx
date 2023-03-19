@@ -23,12 +23,15 @@ export default function SignInModal({ connect, error }: SignInModalProps) {
   const { onClose } = useDisclosure();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false)
 
   const handleSubmit = async (
     e: React.MouseEvent<HTMLButtonElement, MouseEvent>
   ) => {
     e.preventDefault();
+    setIsLoading(true)
     await connect(username, password);
+    setIsLoading(false)
   };
 
   return (
@@ -57,6 +60,8 @@ export default function SignInModal({ connect, error }: SignInModalProps) {
                   onClick={handleSubmit}
                   marginY={2}
                   colorScheme="blue"
+                  isDisabled={!username || !password}
+                  isLoading={isLoading}
                 >
                   Enter
                 </Button>

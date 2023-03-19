@@ -9,7 +9,7 @@ import {
   Textarea,
 } from "@chakra-ui/react";
 import { useState } from "react";
-import { useChats } from "../../hooks/useChats";
+import { ChatMessage, useChats } from "../../hooks/useChats";
 import ChatMessageBox from "./ChatMessageBox";
 import SignInModal from "./SignInModal";
 
@@ -21,6 +21,10 @@ export default function ChatPage() {
   const handleSend = async () => {
     await sendChat(messageInput)
     setMessageInput("")
+  }
+
+  const sortByTimeStamp = (a: ChatMessage, b: ChatMessage) => {
+    return new Date(a.timestamp).valueOf() - new Date(b.timestamp).valueOf()
   }
 
   if (!isConnected) {
@@ -49,7 +53,7 @@ export default function ChatPage() {
           </Button>
         </Flex>
         <Divider marginY={2} />
-        {Object.values(chats).map((message, idx) => (
+        {Object.values(chats).sort(sortByTimeStamp).map((message, idx) => (
           <ChatMessageBox username={username} message={message} key={idx} />
         ))}
         <form>
