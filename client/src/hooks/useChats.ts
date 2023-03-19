@@ -1,9 +1,16 @@
 import axios, { AxiosError } from "axios";
-import { useRef, useState } from "react";
-import { ChatMessage } from "../types";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { v4 as uuidV4 } from "uuid";
 
 interface TokenResponse {
   token: string;
+}
+
+export interface ChatMessage {
+  username: string;
+  data: string;
+  timestamp: string;
+  chatId: string;
 }
 
 interface ErrorResponse {
@@ -16,22 +23,26 @@ interface BroadcastChatMessage {
   data: ChatMessage;
 }
 
-type IncomingMessage = BroadcastChatMessage;
+interface ChatListMessage {
+  messageType: "chat:list";
+  data: Record<string, ChatMessage> 
+}
+
+interface OutgoingChatPackage {
+  messageType: "chat:send";
+  data: ChatMessage;
+}
+
+type IncomingPackage = BroadcastChatMessage | ChatListMessage;
 
 const BASE_URL = "http://localhost:8081";
-const tempChats: ChatMessage[] = [
-  {clientId: "user1", message: "Hello there", timestamp: new Date().toString(), messageId: "1"},
-  {clientId: "zane", message: "Hi", timestamp: new Date().toString(), messageId: "2"},
-  {clientId: "zane", message: "Hi", timestamp: new Date().toString(), messageId: "3"},
-  {clientId: "zane", message: "Hi", timestamp: new Date().toString(), messageId: "4"},
-]
 
 export function useChats() {
-  const [chats, setChats] = useState<ChatMessage[]>(tempChats);
+  const [chats, setChats] = useState<Record<string, ChatMessage>>({});
   const [username, setUsername] = useState("");
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState("");
-  const socketRef = useRef<WebSocket | null>(null)
+  const socketRef = useRef<WebSocket | null>(null);
 
   const getToken = async (password: string): Promise<string> => {
     try {
@@ -55,12 +66,11 @@ export function useChats() {
     }
   };
 
-  const initSocket = (token: string) => {
+  const initSocket = useCallback((token: string) => {
     const url = new URL(BASE_URL);
     url.protocol = "ws";
     url.pathname = "/chat";
     url.searchParams.append("token", token);
-    console.log(url.toString());
     const socket = new WebSocket(url.toString());
     socket.onopen = (event) => {
       console.log("socket opened");
@@ -72,38 +82,61 @@ export function useChats() {
     };
     socket.onmessage = (event) => {
       console.log("socket message");
-      console.log(event.data);
-      const message = event.data as IncomingMessage;
+      const message = JSON.parse(event.data) as IncomingPackage;
+      console.log(message)
       if (message.messageType === "chat:broadcast") {
-        setChats([...chats, message.data]);
+        setChats((prev) => ({
+          ...prev,
+          [message.data.chatId]: message.data,
+        }));
+      } else if (message.messageType === "chat:list") {
+        setChats(message.data)
       }
     };
-    socket.onclose = (event) => {
+    socket.onclose = (_event) => {
       // TODO: handle exit codes differently
-      setIsConnected(false)
-      setChats([]);
+      setIsConnected(false);
+      setChats({});
       setError("");
-      setUsername("")
+      setUsername("");
     };
-    socketRef.current = socket
-  };
+    socketRef.current = socket;
+  }, []);
 
   const connect = async (newUsername: string, password: string) => {
     setError("");
-    setUsername(newUsername)
+    setUsername(newUsername);
     try {
       const token = await getToken(password);
-      console.log("successfully got token");
       initSocket(token);
     } catch (error) {
-      console.log(error);
       setError((error as Error).message || "an unknown error occurred");
     }
   };
 
-  const disconnect = async () => {
-    socketRef.current?.close()
-  }
+  const sendChat = async (chatMessage: string) => {
+    if (!socketRef.current) {
+      setIsConnected(false);
+      setError("Attempt to send chat when socket is null");
+      return;
+    }
+    const chatId = uuidV4();
+    const chatObj: ChatMessage = {
+      data: chatMessage,
+      chatId: chatId,
+      timestamp: new Date().toString(),
+      username,
+    };
+    const socketPackage: OutgoingChatPackage = {
+      data: chatObj,
+      messageType: "chat:send",
+    };
+    socketRef.current.send(JSON.stringify(socketPackage));
+  };
 
-  return { isConnected, chats, connect, error, username, disconnect };
+  const disconnect = async () => {
+    socketRef.current?.close();
+  };
+
+  return { isConnected, chats, connect, error, username, disconnect, sendChat };
 }

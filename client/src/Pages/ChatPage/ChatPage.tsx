@@ -6,14 +6,22 @@ import {
   Flex,
   Spacer,
   Text,
+  Textarea,
 } from "@chakra-ui/react";
+import { useState } from "react";
 import { useChats } from "../../hooks/useChats";
 import ChatMessageBox from "./ChatMessageBox";
 import SignInModal from "./SignInModal";
 
 export default function ChatPage() {
-  const { isConnected, error, connect, username, disconnect, chats } =
+  const { isConnected, error, connect, username, disconnect, chats, sendChat } =
     useChats();
+  const [messageInput, setMessageInput] = useState("");
+
+  const handleSend = async () => {
+    await sendChat(messageInput)
+    setMessageInput("")
+  }
 
   if (!isConnected) {
     return <SignInModal connect={connect} error={error} />;
@@ -41,9 +49,18 @@ export default function ChatPage() {
           </Button>
         </Flex>
         <Divider marginY={2} />
-        {chats.map((message, idx) => (
+        {Object.values(chats).map((message, idx) => (
           <ChatMessageBox username={username} message={message} key={idx} />
         ))}
+        <form>
+          <Textarea
+            value={messageInput}
+            onChange={(e) => setMessageInput(e.target.value)}
+          />
+        <Center marginY={2}>
+          <Button colorScheme="blue" onClick={handleSend} isDisabled={!messageInput}>Send</Button>
+        </Center>
+        </form>
       </Box>
     </Center>
   );

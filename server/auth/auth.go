@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"sync"
 )
@@ -25,10 +24,6 @@ type AuthResponse struct {
 type ErrorResponse struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
-}
-
-func writeLog(message string) {
-	log.Println("[auth]", message)
 }
 
 func randToken() string {

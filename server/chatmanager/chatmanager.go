@@ -8,18 +8,36 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-type Message struct {
-	Message  string `json:"message"`
-	ClientId string `json:"clientId"`
+const (
+	incomingChatMessageType     = "chat:send"
+	outgoingChatMessageType     = "chat:broadcast"
+	outgoingChatListMessageType = "chat:list"
+)
+
+type Chat struct {
+	Data      string `json:"data"`
+	Username  string `json:"username"`
+	Timestamp string `json:"timestamp"`
+	ChatId    string `json:"chatId"`
+}
+
+type ChatEvent struct {
+	MessageType string `json:"messageType"`
+	Data        Chat   `json:"data"`
+}
+
+type ChatListEvent struct {
+	MessageType string          `json:"messageType"`
+	Data        map[string]Chat `json:"data"`
 }
 
 type Manager struct {
 	clients   map[*websocket.Conn]bool
 	add       chan *websocket.Conn
 	remove    chan *websocket.Conn
-	broadcast chan *Message
+	broadcast chan Chat
 
-	messages    []*Message
+	messages    map[string]Chat
 	authService *auth.AuthService
 	upgrader    *websocket.Upgrader
 }
@@ -29,8 +47,8 @@ func NewManager(authService *auth.AuthService, upgrader *websocket.Upgrader) *Ma
 		clients:     make(map[*websocket.Conn]bool),
 		add:         make(chan *websocket.Conn),
 		remove:      make(chan *websocket.Conn),
-		broadcast:   make(chan *Message),
-		messages:    []*Message{},
+		broadcast:   make(chan Chat),
+		messages:    map[string]Chat{},
 		authService: authService,
 		upgrader:    upgrader,
 	}
@@ -39,7 +57,6 @@ func NewManager(authService *auth.AuthService, upgrader *websocket.Upgrader) *Ma
 func (instance *Manager) HandleConnection() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := r.URL.Query().Get("token")
-		log.Println("Checking if token", token, "is valid")
 		if !instance.authService.TokenIsValid(token) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
@@ -64,18 +81,19 @@ func (instance *Manager) RemoveClient(conn *websocket.Conn) {
 }
 
 func (instance *Manager) listenForMessages(conn *websocket.Conn) {
-	log.Println("Listening for messages:", conn.RemoteAddr().String())
 	for {
-		var msg Message
+		var msg ChatEvent
 		err := conn.ReadJSON(&msg)
 		if err != nil {
 			log.Println("Error reading json:", err.Error())
-			instance.remove <- conn
+			// TODO: send error response to client
 			return
 		}
-		log.Println("Received message")
+		log.Println("Received message from", conn.RemoteAddr().String())
 		log.Println(msg)
-		instance.broadcast <- &msg
+		if msg.MessageType == incomingChatMessageType {
+			instance.broadcast <- msg.Data
+		}
 	}
 }
 
@@ -85,6 +103,16 @@ func (instance *Manager) Run() {
 		case client := <-instance.add:
 			log.Println("Adding client:", client.RemoteAddr().String())
 			instance.clients[client] = true
+			chatListEvent := ChatListEvent{
+				MessageType: outgoingChatListMessageType,
+				Data:        instance.messages,
+			}
+			err := client.WriteJSON(chatListEvent)
+			if err != nil {
+				// TODO: send error message to client
+				log.Println("Error writing chat list to client: ", err.Error())
+				return
+			}
 		case client := <-instance.remove:
 			log.Println("Removing client:", client.RemoteAddr().String())
 			if _, ok := instance.clients[client]; ok {
@@ -95,9 +123,10 @@ func (instance *Manager) Run() {
 			}
 		case message := <-instance.broadcast:
 			log.Println("Broadcasting: ", message)
-			instance.messages = append(instance.messages, message)
+			instance.messages[message.ChatId] = message
+			chatEvent := ChatEvent{MessageType: outgoingChatMessageType, Data: message}
 			for client := range instance.clients {
-				err := client.WriteJSON(message)
+				err := client.WriteJSON(chatEvent)
 				if err != nil {
 					log.Println("Error writing message to client", client.RemoteAddr().String(), ": ", err)
 				}

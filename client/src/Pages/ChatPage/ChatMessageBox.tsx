@@ -1,12 +1,12 @@
 import { Box, Text } from "@chakra-ui/react";
-import { ChatMessage } from "../../types";
+import { ChatMessage } from "../../hooks/useChats";
 
 interface MessageProps {
   username: string;
   message: ChatMessage;
 }
 export default function ChatMessageBox({ username, message }: MessageProps) {
-  const isUsersMessage = message.clientId === username;
+  const isUsersMessage = message.username === username;
   const date = new Date(message.timestamp);
   return (
     <Box
@@ -21,10 +21,10 @@ export default function ChatMessageBox({ username, message }: MessageProps) {
     >
       {!isUsersMessage && (
         <Text fontSize="xs" color="blackAlpha.500">
-          {message.clientId}
+          {message.username}
         </Text>
       )}
-      <Text>{message.message}</Text>
+      <Text>{message.data}</Text>
       <Text
         fontSize="xs"
         color="blackAlpha.500"
