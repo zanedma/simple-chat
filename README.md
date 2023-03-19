@@ -9,7 +9,7 @@ cd server
 go run .
 ```
 
-2. Run the client on port 3000:
+2. Run the client on port 3000 from another terminal:
 
 ```
 cd client
@@ -22,3 +22,7 @@ npm run start
 4. Enter any username, chats that originated from that username are shown in blue once authenticated to the chat room.
 
 5. The correct password to authenticate to the server is currently just "`password`". Once connected, you should see the chat interface.
+
+6. Send chats using the text box at the bottom of the page, and the `Send` button.
+
+7. Navigate to `localhost:3000` in as many tabs as you want, and repeat steps 4-6.
