@@ -36,6 +36,7 @@ interface OutgoingChatPackage {
 type IncomingPackage = BroadcastChatMessage | ChatListMessage;
 
 const BASE_URL = "http://localhost:8081";
+const NORMAL_CLOSE_STATUS = 1000
 
 /**
  * @description manages the current chat state and authenticating and communicating with the server
@@ -174,7 +175,7 @@ export function useChats() {
    * @description disconnect the socket
    */
   const disconnect = (): void => {
-    socketRef.current?.close();
+    socketRef.current?.close(NORMAL_CLOSE_STATUS);
   };
 
   return { isConnected, chats, connect, error, username, disconnect, sendChat };

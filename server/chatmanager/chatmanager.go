@@ -79,9 +79,18 @@ func (instance *Manager) HandleConnection() http.HandlerFunc {
 }
 
 func (instance *Manager) addClient(conn *websocket.Conn) {
+	defaultCloseHandler := conn.CloseHandler()
+	conn.SetCloseHandler(func(code int, text string) error {
+		log.Println("Closing connection to ", conn.RemoteAddr().String(), ": code ", code)
+		err := defaultCloseHandler(code, text)
+		if err != nil {
+			log.Println("Error in default close handler: ", err.Error())
+		}
+		instance.remove <- conn
+		return err
+	})
 	instance.add <- conn
 	go instance.listenForMessages(conn)
-	// TODO: send list of messages
 }
 
 func (instance *Manager) RemoveClient(conn *websocket.Conn) {
@@ -93,8 +102,11 @@ func (instance *Manager) listenForMessages(conn *websocket.Conn) {
 		var msg ChatEvent
 		err := conn.ReadJSON(&msg)
 		if err != nil {
-			log.Println("Error reading json:", err.Error())
-			// TODO: send error response to client
+			// if the normal close code was received, this error is fine and we know the
+			// client closed the connection
+			if !websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Println("Error reading json:", err.Error())
+			}
 			return
 		}
 		log.Println("Received message from", conn.RemoteAddr().String())
