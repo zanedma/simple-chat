@@ -119,7 +119,6 @@ func (instance *Manager) listenForMessages(conn *websocket.Conn) {
 			return
 		}
 		log.Println("Received message from", conn.RemoteAddr().String())
-		log.Println(msg)
 		if msg.MessageType == incomingChatMessageType {
 			instance.broadcast <- msg.Data
 		}
