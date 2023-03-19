@@ -4,8 +4,14 @@ import { ChatMessage } from "../../hooks/useChats";
 interface MessageProps {
   username: string;
   message: ChatMessage;
+  isPending: boolean;
 }
-export default function ChatMessageBox({ username, message }: MessageProps) {
+
+export default function ChatMessageBox({
+  username,
+  message,
+  isPending,
+}: MessageProps) {
   const isUsersMessage = message.username === username;
   const date = new Date(message.timestamp);
   return (
@@ -31,7 +37,7 @@ export default function ChatMessageBox({ username, message }: MessageProps) {
         marginLeft="auto"
         marginRight={0}
       >
-        {date.toString()}
+        {isPending ? "Sending..." : date.toString()}
       </Text>
     </Box>
   );

@@ -3,6 +3,7 @@ package main
 import (
 	"beehive-chat/auth"
 	chatmanager "beehive-chat/chatmanager"
+	"log"
 	"net/http"
 
 	"github.com/gorilla/websocket"
@@ -11,6 +12,7 @@ import (
 const (
 	connectionPassword = "password123"
 	allowedOrigin      = "http://localhost:3000"
+	port               = 8081
 )
 
 func checkPassword(next http.Handler) http.Handler {
@@ -38,5 +40,9 @@ func main() {
 	http.Handle("/auth", authService.HandleAuth())
 	http.Handle("/chat", manager.HandleConnection())
 
-	http.ListenAndServe("localhost:8081", nil)
+	log.Println("Starting server on port", port)
+	err := http.ListenAndServe("localhost:8081", nil)
+	if err != nil {
+		log.Println("Error starting server: ", err.Error())
+	}
 }

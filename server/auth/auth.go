@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	connectionPassword = "password123"
+	connectionPassword = "password"
 )
 
 type AuthServicer interface {
