@@ -13,8 +13,12 @@ const (
 )
 
 type AuthServicer interface {
+	// handle an authentication request from a client
 	HandleAuth() http.HandlerFunc
+	// returns a boolean indicating if a token is currently valid
 	TokenIsValid(string) bool
+	// removes a token from the list of valid tokens
+	RemoveToken(string) error
 }
 type authService struct {
 	sync.RWMutex
@@ -30,12 +34,14 @@ type ErrorResponse struct {
 	Message string `json:"message"`
 }
 
+// generate a random token
 func randToken() string {
 	bytes := make([]byte, 8)
 	rand.Read(bytes)
 	return fmt.Sprintf("%x", bytes)
 }
 
+// create a new AuthServicer instance
 func NewService() AuthServicer {
 	return &authService{
 		tokenCache: make(map[string]bool),
@@ -76,6 +82,19 @@ func (instance *authService) TokenIsValid(token string) bool {
 	return instance.tokenCache[token]
 }
 
+func (instance *authService) RemoveToken(token string) error {
+	instance.Lock()
+	defer instance.Unlock()
+	_, ok := instance.tokenCache[token]
+	if !ok {
+		return fmt.Errorf("token not found")
+	}
+	delete(instance.tokenCache, token)
+	return nil
+}
+
+// set the cors headers (not very strict currently) since http library does not have a default way
+// to do this
 func setupCorsResponse(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")

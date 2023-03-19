@@ -2,6 +2,7 @@ package chatmanager
 
 import (
 	"beehive-chat/auth"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -62,6 +63,8 @@ func NewManager(authService auth.AuthServicer, upgrader *websocket.Upgrader) *Ma
 	}
 }
 
+// handle a connection request from a client. First checks the token to authenticate the request
+// and if valid, upgrades the connection and adds the client to the chat manager
 func (instance *Manager) HandleConnection() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := r.URL.Query().Get("token")
@@ -74,12 +77,15 @@ func (instance *Manager) HandleConnection() http.HandlerFunc {
 			log.Println("Error upgrading connection:", err)
 			return
 		}
-		instance.addClient(conn)
+		instance.addClient(conn, token)
 	}
 }
 
-func (instance *Manager) addClient(conn *websocket.Conn) {
+// add a connected client to the chat manager.
+func (instance *Manager) addClient(conn *websocket.Conn, token string) {
 	defaultCloseHandler := conn.CloseHandler()
+
+	// set custom behavior when a connection closes
 	conn.SetCloseHandler(func(code int, text string) error {
 		log.Println("Closing connection to ", conn.RemoteAddr().String(), ": code ", code)
 		err := defaultCloseHandler(code, text)
@@ -87,16 +93,19 @@ func (instance *Manager) addClient(conn *websocket.Conn) {
 			log.Println("Error in default close handler: ", err.Error())
 		}
 		instance.remove <- conn
+		// invalidate the token when the connection closes. If we want to add automatic reconnect
+		// functionality to to the frontend on unexpected close, this would need to be changed to
+		// check the close code or something else
+		instance.authService.RemoveToken(token)
 		return err
 	})
+
 	instance.add <- conn
 	go instance.listenForMessages(conn)
 }
 
-func (instance *Manager) RemoveClient(conn *websocket.Conn) {
-	instance.remove <- conn
-}
-
+// read incoming messages and handle them accordingly (currently only 1 message type is incoming
+// client side)
 func (instance *Manager) listenForMessages(conn *websocket.Conn) {
 	for {
 		var msg ChatEvent
@@ -104,7 +113,7 @@ func (instance *Manager) listenForMessages(conn *websocket.Conn) {
 		if err != nil {
 			// if the normal close code was received, this error is fine and we know the
 			// client closed the connection
-			if !websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Println("Error reading json:", err.Error())
 			}
 			return
@@ -117,6 +126,7 @@ func (instance *Manager) listenForMessages(conn *websocket.Conn) {
 	}
 }
 
+// send the full list of chats to the client
 func (instance *Manager) sendChatList(conn *websocket.Conn) error {
 	chatListEvent := ChatListEvent{
 		MessageType: outgoingChatListMessageType,
@@ -130,6 +140,11 @@ func (instance *Manager) sendChatList(conn *websocket.Conn) error {
 	return err
 }
 
+// broadcast a message to a client. If an error occurrs, the manager will retry after waiting
+// a backed off amount of time. On attempts after the first, the full list will be sent instead
+// of the single message to make sure the client has the most up-to-date data. If the retry limit
+// is hit, the connection will be closed, and the client will have to reconnect. On reconnect,
+// it will receive the most up-to-date chat list.
 func (instance *Manager) broadcastToClient(conn *websocket.Conn, chat ChatEvent) error {
 	var err error
 	for attempt := 0; attempt < broadcastMaxRetries; attempt++ {
@@ -144,16 +159,21 @@ func (instance *Manager) broadcastToClient(conn *websocket.Conn, chat ChatEvent)
 		log.Printf("Attempt %d of %d - error writing message to client %s: %s", attempt+1, broadcastMaxRetries, conn.RemoteAddr().String(), err)
 		time.Sleep(time.Second * (time.Duration(attempt) + 1))
 	}
-	return err
+	conn.CloseHandler()(websocket.CloseInternalServerErr, "broadcast error")
+	return fmt.Errorf("hello")
 }
 
+// run the chat manager and listen on the channels for events
 func (instance *Manager) Run() {
 	for {
 		select {
 		case conn := <-instance.add:
 			log.Println("Adding client:", conn.RemoteAddr().String())
 			instance.clients[conn] = true
-			instance.sendChatList(conn)
+			err := instance.sendChatList(conn)
+			if err != nil {
+				conn.CloseHandler()(websocket.CloseInternalServerErr, "error sending chat list")
+			}
 		case conn := <-instance.remove:
 			log.Println("Removing client:", conn.RemoteAddr().String())
 			if _, ok := instance.clients[conn]; ok {
