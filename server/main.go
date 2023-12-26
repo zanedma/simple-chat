@@ -1,8 +1,8 @@
 package main
 
 import (
-	"beehive-chat/auth"
-	chatmanager "beehive-chat/chatmanager"
+	"simple-chat/auth"
+	chatmanager "simple-chat/chatmanager"
 	"log"
 	"net/http"
 

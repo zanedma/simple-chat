@@ -1,7 +1,7 @@
 package chatmanager
 
 import (
-	"beehive-chat/auth"
+	"simple-chat/auth"
 	"fmt"
 	"log"
 	"net/http"

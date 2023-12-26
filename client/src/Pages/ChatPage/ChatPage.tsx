@@ -68,7 +68,7 @@ export default function ChatPage() {
       >
         <Flex alignItems="baseline" gap={4}>
           <Text fontSize="2xl" fontWeight="semibold">
-            Beehive Chat
+            Simple Chat
           </Text>
           <Spacer />
           <Text fontSize="xl">{username}</Text>

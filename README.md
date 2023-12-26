@@ -1,4 +1,6 @@
-# Beehive chat
+# Simple chat
+
+A simple chat room app demonstrating a full-stack chatroom implementation.
 
 ## Using the app
 

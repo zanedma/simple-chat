@@ -1,4 +1,4 @@
-module beehive-chat
+module simple-chat
 
 go 1.20
 
